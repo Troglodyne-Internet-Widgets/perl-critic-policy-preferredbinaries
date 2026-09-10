@@ -4,7 +4,7 @@ Perl::Critic::Policy::PreferredBinaries - Recommend a perl sub over shelling out
 
 # VERSION
 
-version 0.001
+version 0.002
 
 # SYNOPSIS
 
@@ -41,19 +41,41 @@ recording the ones you have decided.
 
 Anywhere a command reaches a shell or an `exec`:
 
-- `system` and `exec`, in list or string form
-- backticks and `qx//`
+- `system` and `exec` as function calls, in list or string form.  Not
+as a method name -- `$obj->system(...)` -- and not as a hash key.
+- backticks and `qx//`.
 - a piped `open`, either `'-|'` or `'|-'`, in two- or
-three-argument form
-- the argument-list form of the usual runners: `IPC::Run3::run3`,
-`IPC::Run::run`, `IPC::Cmd::run`, and `Capture::Tiny`'s `capture`,
-`capture_merged`, `tee` and friends
+three-argument form.
+- the usual runners, **by name**: `run3`, `run`, `capture`,
+`capture_merged`, `capture_stdout`, `capture_stderr`, `tee` and
+`tee_merged`.  Called bare, fully qualified (`IPC::Run3::run3`,
+`IPC::Run::run`, `IPC::Cmd::run`, `Capture::Tiny::capture`) or as a method.
+The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
+take it, or a list -- or the value of a named `command =>`, as IPC::Cmd
+takes it, wherever it falls among the other named arguments.  A runner name
+used as a hash key is not a call and is not read as one.
 
 In each case it takes the first word of the command, drops any directory in
 front of it, and looks that up.  So `/usr/bin/ssh-keygen` and
 `ssh-keygen` are the same binary, and `$ENV{SSH_KEYGEN}` is not one
 it can see -- a name computed at runtime is a name this cannot know, and it
 says nothing rather than guessing.
+
+## Commands on other machines
+
+Runners are matched by name, methods included, because a runner is usually
+wrapped in a method of the same name and this cannot see what a method does.
+That cuts one way it is worth knowing about: a method called `run` or
+`capture` that runs its command on _another_ machine -- over ssh, say -- is
+read as a local runner, and gets advice that makes no sense for it.  An
+in-process module cannot stand in for a program running somewhere else.
+
+That is not something this policy should be concerned with, and the answer is
+in the method's name rather than in a `## no critic` at every call: name it
+for what it does and keep it off the list above -- `run_cmd`, `run_there`,
+anything that is not `run` or `capture`.  A local runner that happens to be
+called something else is equally invisible, which is the same rule seen from
+the other side: the name is the only thing this reads.
 
 ## Matching a flag as well as a binary
 

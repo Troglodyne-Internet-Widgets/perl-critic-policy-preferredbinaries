@@ -123,6 +123,25 @@ subtest 'what it deliberately says nothing about' => sub {
     }
 };
 
+subtest 'runners are matched by name, methods included, and not as hash keys' => sub {
+
+    # By name, because a runner is usually wrapped in a method of the same name
+    # and a policy cannot see what a method does.  So the way to keep a method
+    # that runs commands elsewhere off this list is its name.
+    is( scalar @{ found(q{$machine->run( 'ssh-keygen', '-t', 'rsa' );}) },     1, 'a method called run is read as a runner' );
+    is( scalar @{ found(q{$machine->run_cmd( 'ssh-keygen', '-t', 'rsa' );}) }, 0, 'and one named for what it does is not' );
+
+    # Measured against 0.001: this was reported, a hash key read as a call.
+    is( scalar @{ found(q{my %how = ( run => 'ssh-keygen' );}) }, 0, 'a runner name as a hash key is not a call' );
+
+    # IPC::Cmd takes its command as a named argument.  0.001 said it read these
+    # and did not.
+    is( scalar @{ found(q{IPC::Cmd::run( command => 'ssh-keygen -t rsa' );}) },               1, 'IPC::Cmd, as a string' );
+    is( scalar @{ found(q{IPC::Cmd::run( command => [ 'ssh-keygen', '-t', 'rsa' ] );}) },     1, 'as an arrayref' );
+    is( scalar @{ found(q{IPC::Cmd::run( verbose => 0, command => 'ssh-keygen -t rsa' );}) }, 1, 'and wherever it falls among the other named arguments' );
+    is( scalar @{ found(q{IPC::Cmd::run( command => $cmd );}) },                              0, 'but not a command in a variable, which it cannot read' );
+};
+
 subtest 'the longest matching section wins' => sub {
 
     # Which is the whole point of allowing arguments in a section name: one

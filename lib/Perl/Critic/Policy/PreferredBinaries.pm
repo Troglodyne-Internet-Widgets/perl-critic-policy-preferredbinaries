@@ -58,16 +58,22 @@ Anywhere a command reaches a shell or an C<exec>:
 
 =over 4
 
-=item * C<system> and C<exec>, in list or string form
+=item * C<system> and C<exec> as function calls, in list or string form.  Not
+as a method name -- C<< $obj->system(...) >> -- and not as a hash key.
 
-=item * backticks and C<qx//>
+=item * backticks and C<qx//>.
 
 =item * a piped C<open>, either C<< '-|' >> or C<< '|-' >>, in two- or
-three-argument form
+three-argument form.
 
-=item * the argument-list form of the usual runners: C<IPC::Run3::run3>,
-C<IPC::Run::run>, C<IPC::Cmd::run>, and C<Capture::Tiny>'s C<capture>,
-C<capture_merged>, C<tee> and friends
+=item * the usual runners, B<by name>: C<run3>, C<run>, C<capture>,
+C<capture_merged>, C<capture_stdout>, C<capture_stderr>, C<tee> and
+C<tee_merged>.  Called bare, fully qualified (C<IPC::Run3::run3>,
+C<IPC::Run::run>, C<IPC::Cmd::run>, C<Capture::Tiny::capture>) or as a method.
+The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
+take it, or a list -- or the value of a named C<< command => >>, as IPC::Cmd
+takes it, wherever it falls among the other named arguments.  A runner name
+used as a hash key is not a call and is not read as one.
 
 =back
 
@@ -76,6 +82,22 @@ front of it, and looks that up.  So C<< /usr/bin/ssh-keygen >> and
 C<< ssh-keygen >> are the same binary, and C<< $ENV{SSH_KEYGEN} >> is not one
 it can see -- a name computed at runtime is a name this cannot know, and it
 says nothing rather than guessing.
+
+=head2 Commands on other machines
+
+Runners are matched by name, methods included, because a runner is usually
+wrapped in a method of the same name and this cannot see what a method does.
+That cuts one way it is worth knowing about: a method called C<run> or
+C<capture> that runs its command on I<another> machine -- over ssh, say -- is
+read as a local runner, and gets advice that makes no sense for it.  An
+in-process module cannot stand in for a program running somewhere else.
+
+That is not something this policy should be concerned with, and the answer is
+in the method's name rather than in a C<## no critic> at every call: name it
+for what it does and keep it off the list above -- C<run_cmd>, C<run_there>,
+anything that is not C<run> or C<capture>.  A local runner that happens to be
+called something else is equally invisible, which is the same rule seen from
+the other side: the name is the only thing this reads.
 
 =head2 Matching a flag as well as a binary
 
@@ -299,9 +321,9 @@ sub _commands_in {
 
     my $word = "$elem";
 
-    return $self->_from_open($elem)      if $word eq 'open' && is_function_call($elem);
-    return $self->_from_arguments($elem) if $BUILTIN{$word} && is_function_call($elem);
-    return $self->_from_arguments($elem) if $RUNNER{ ( split( q{::}, $word ) )[-1] // q{} };
+    return $self->_from_open($elem)      if $word eq 'open'                                 && is_function_call($elem);
+    return $self->_from_arguments($elem) if $BUILTIN{$word}                                 && is_function_call($elem);
+    return $self->_from_runner($elem)    if $RUNNER{ ( split( q{::}, $word ) )[-1] // q{} } && !is_hash_key($elem);
 
     return ();
 }
@@ -336,6 +358,40 @@ sub _from_arguments {
     # A single string argument is a shell command line; a list, or an arrayref
     # as the runners take, is already split into words.
     return ( _words_from_args(@args) );
+}
+
+# A runner is matched by name, and its command is either positional -- the
+# first argument, often an arrayref, as IPC::Run3 and IPC::Run take it -- or the
+# value of a named `command =>`, which is how IPC::Cmd::run takes it, in any
+# position among the other named arguments.
+sub _from_runner {
+    my ( $self, $elem ) = @_;
+
+    my @args = parse_arg_list($elem);
+    return () unless @args;
+
+    my @named = _named_command(@args);
+    return @named if @named;
+
+    return ( _words_from_args(@args) );
+}
+
+sub _named_command {
+    my (@args) = @_;
+
+    my @tokens = map { ref $_ eq 'ARRAY' ? @$_ : $_ } @args;
+    foreach my $i ( 0 .. $#tokens ) {
+        my $token = $tokens[$i];
+        next unless Scalar::Util::blessed($token) && $token->isa('PPI::Token::Word') && "$token" eq 'command';
+
+        my $value = $i + 1;
+        $value++ while $value <= $#tokens && Scalar::Util::blessed( $tokens[$value] ) && $tokens[$value]->isa('PPI::Token::Operator');
+        return () if $value > $#tokens;
+
+        return _words_from_args( [ $tokens[$value] ] );
+    }
+
+    return ();
 }
 
 # Each argument is a list of PPI tokens.  An arrayref argument is a command in

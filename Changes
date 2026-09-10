@@ -1,5 +1,15 @@
 Revision history for Perl-Critic-Policy-PreferredBinaries
 
+0.002     2026-09-11 TEODESIAN
+
+    - Document that runners are matched by name, method calls included, and
+      what that means for a method that runs commands on another machine:
+      name it for what it does rather than annotating every call.
+    - A runner name used as a hash key -- ( run => 'ssh-keygen' ) -- is no
+      longer read as a call.
+    - IPC::Cmd::run's named command => argument is read, as the POD for 0.001
+      claimed and the code did not.
+
 0.001     2026-09-11 TEODESIAN
 
     - First release.  Recommends a perl sub over shelling out to a binary that
