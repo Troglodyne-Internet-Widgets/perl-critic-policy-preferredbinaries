@@ -1,0 +1,7 @@
+Revision history for Perl-Critic-Policy-PreferredBinaries
+
+0.001     2026-09-11 TEODESIAN
+
+    - First release.  Recommends a perl sub over shelling out to a binary that
+      does the same job, configured the same way as
+      Perl::Critic::Policy::PreferredModules.
