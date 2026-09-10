@@ -1,9 +1,10 @@
 package Perl::Critic::Policy::PreferredBinaries;
 
-# 5.010, matching Perl::Critic::Policy::PreferredModules: a policy runs on
-# whatever perl the code being criticised is being criticised with, which is
-# not a perl we get to choose.
-use 5.010;
+# 5.014, which is as low as the house style allows: RequireDefault wants /aa on
+# every pattern, and /aa arrived in 5.14.  Kept that low rather than at the
+# 5.041 applications here are written against, because a policy runs on
+# whatever perl the code being criticised is criticised with.
+use 5.014;
 
 use strict;
 use warnings FATAL => 'all';
@@ -24,37 +25,15 @@ use Scalar::Util        ();
 
 =head1 SYNOPSIS
 
-In F<.perlcriticrc>:
+With C<ssh-keygen>, C<dig> and C<curl> named in F<.preferred_binaries.ini> --
+see L</CONFIGURATION> -- each of these is reported, along with what to use
+instead:
 
-    [PreferredBinaries]
-    config = ~/.preferred_binaries.ini
-
-In F<.preferred_binaries.ini>:
-
-    [ssh-keygen]
-    prefer = Provisioner::Utils::write_ssh_keypair
-    reason = "In-process: no quoting to get wrong, no temp file, and errors you can catch"
-
-    [ssh-keygen -y]
-    prefer = Provisioner::Utils::ssh_pubkey_from_private
-    reason = "Derives the public half with CryptX"
-
-    [wget]
-    reason = "Nothing here should be fetching anything with this"
-
-    [curl]
-    prefer = HTTP::Tiny
-    reason = "One HTTP client, and one place redirects and timeouts are decided"
-
-    [dig]
-    prefer = Net::DNS
-    reason = "Parsing dig output is parsing a UI"
-
-Then this is reported:
+    my ( $path, $name, $url );
 
     system( 'ssh-keygen', '-t', 'rsa', '-f', $path );
     my $out = `dig +short $name`;
-    open( my $fh, '-|', 'curl', '-s', $url );
+    open( my $fh, '-|', 'curl', '-s', $url ) or die "curl: $!";
 
 =head1 DESCRIPTION
 
@@ -112,6 +91,32 @@ lists mean the same thing is a job for something that understands the binary.
 
 =head1 CONFIGURATION
 
+In F<.perlcriticrc>:
+
+    [PreferredBinaries]
+    config = ~/.preferred_binaries.ini
+
+In F<.preferred_binaries.ini>:
+
+    [ssh-keygen]
+    prefer = Provisioner::Utils::write_ssh_keypair
+    reason = "In-process: no quoting to get wrong, no temp file, and errors you can catch"
+
+    [ssh-keygen -y]
+    prefer = Provisioner::Utils::ssh_pubkey_from_private
+    reason = "Derives the public half with CryptX"
+
+    [wget]
+    reason = "Nothing here should be fetching anything with this"
+
+    [curl]
+    prefer = HTTP::Tiny
+    reason = "One HTTP client, and one place redirects and timeouts are decided"
+
+    [dig]
+    prefer = Net::DNS
+    reason = "Parsing dig output is parsing a UI"
+
 =head2 config
 
 Path to the INI file.  C<~> is expanded.  Defaults to
@@ -144,6 +149,10 @@ entry below them and do not:
 names one ban and one recommendation, not two recommendations.  Config::INI
 carries nothing forward, so each section needs its own C<prefer> if that is
 what it means.
+
+=cut
+
+=for Pod::Coverage supported_parameters
 
 =cut
 

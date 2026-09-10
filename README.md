@@ -8,42 +8,16 @@ version 0.001
 
 # SYNOPSIS
 
-In `.perlcriticrc`:
-
-```
-[PreferredBinaries]
-config = ~/.preferred_binaries.ini
-```
-
-In `.preferred_binaries.ini`:
-
-```
-[ssh-keygen]
-prefer = Provisioner::Utils::write_ssh_keypair
-reason = "In-process: no quoting to get wrong, no temp file, and errors you can catch"
-
-[ssh-keygen -y]
-prefer = Provisioner::Utils::ssh_pubkey_from_private
-reason = "Derives the public half with CryptX"
-
-[wget]
-reason = "Nothing here should be fetching anything with this"
-
-[curl]
-prefer = HTTP::Tiny
-reason = "One HTTP client, and one place redirects and timeouts are decided"
-
-[dig]
-prefer = Net::DNS
-reason = "Parsing dig output is parsing a UI"
-```
-
-Then this is reported:
+With `ssh-keygen`, `dig` and `curl` named in `.preferred_binaries.ini` --
+see ["CONFIGURATION"](#configuration) -- each of these is reported, along with what to use
+instead:
 
 ```perl
+my ( $path, $name, $url );
+
 system( 'ssh-keygen', '-t', 'rsa', '-f', $path );
 my $out = `dig +short $name`;
-open( my $fh, '-|', 'curl', '-s', $url );
+open( my $fh, '-|', 'curl', '-s', $url ) or die "curl: $!";
 ```
 
 # DESCRIPTION
@@ -94,6 +68,36 @@ not match `ssh-keygen -q -y`, because working out whether two argument
 lists mean the same thing is a job for something that understands the binary.
 
 # CONFIGURATION
+
+In `.perlcriticrc`:
+
+```
+[PreferredBinaries]
+config = ~/.preferred_binaries.ini
+```
+
+In `.preferred_binaries.ini`:
+
+```
+[ssh-keygen]
+prefer = Provisioner::Utils::write_ssh_keypair
+reason = "In-process: no quoting to get wrong, no temp file, and errors you can catch"
+
+[ssh-keygen -y]
+prefer = Provisioner::Utils::ssh_pubkey_from_private
+reason = "Derives the public half with CryptX"
+
+[wget]
+reason = "Nothing here should be fetching anything with this"
+
+[curl]
+prefer = HTTP::Tiny
+reason = "One HTTP client, and one place redirects and timeouts are decided"
+
+[dig]
+prefer = Net::DNS
+reason = "Parsing dig output is parsing a UI"
+```
 
 ## config
 

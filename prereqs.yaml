@@ -1,7 +1,7 @@
 ---
 runtime:
   requires:
-    perl: '5.010'
+    perl: '5.014'
     Perl::Critic: '1.140'
     Perl::Critic::Utils: '0'
     Perl::Critic::Exception::Configuration::Generic: '0'
