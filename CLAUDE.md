@@ -3,8 +3,16 @@
 How to work in this repository.  What the code *is* and how it is written are in
 the POD and in the files pointed at below; this is the procedure.
 
-Perl-Critic-Policy-PreferredBinaries is <one or two sentences: what the distribution does, and the two or
-three files somebody would have to read first>.
+Perl-Critic-Policy-PreferredBinaries is a Perl::Critic policy that reads an INI
+file of binaries and what to use instead, and reports a shell-out to one of
+them.  It is the counterpart of `Perl::Critic::Policy::PreferredModules` and is
+deliberately the same shape.
+
+Three files, in this order:
+`lib/Perl/Critic/Policy/PreferredBinaries.pm` is the whole of it and its POD is
+the contract; `t/Perl-Critic-Policy-PreferredBinaries.t` says what it catches
+and, more importantly, what it deliberately does not; `.perlcriticrc` is the
+house style, made enforceable.
 
 ## Read the code before you change it
 
