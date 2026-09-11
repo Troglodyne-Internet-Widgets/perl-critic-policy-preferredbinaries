@@ -60,9 +60,10 @@ close($fh);
 # the parsed configuration by hand would leave the configuration path itself
 # untested.
 sub critic_for {
-    my ($config) = @_;
+    my ( $config, $runners ) = @_;
 
     my $profile = "[PreferredBinaries]\nconfig = $config\n";
+    $profile .= "runners = $runners\n" if defined $runners;
 
     return Perl::Critic->new(
         '-profile'       => \$profile,
@@ -73,8 +74,8 @@ sub critic_for {
 }
 
 sub violations {
-    my ( $source, $config ) = @_;
-    return [ critic_for( $config // $INI )->critique( \$source ) ];
+    my ( $source, $config, $runners ) = @_;
+    return [ critic_for( $config // $INI, $runners )->critique( \$source ) ];
 }
 
 sub found {
@@ -138,6 +139,27 @@ subtest 'runners are matched by name, methods included, and not as hash keys' =>
     is( scalar @{ found(q{IPC::Cmd::run( command => [ 'ssh-keygen', '-t', 'rsa' ] );}) },     1, 'as an arrayref' );
     is( scalar @{ found(q{IPC::Cmd::run( verbose => 0, command => 'ssh-keygen -t rsa' );}) }, 1, 'and wherever it falls among the other named arguments' );
     is( scalar @{ found(q{IPC::Cmd::run( command => $cmd );}) },                              0, 'but not a command in a variable, which it cannot read' );
+};
+
+subtest 'IPC::System::Simple, which never goes through a shell' => sub {
+    is( scalar @{ found(q{systemx( 'ssh-keygen', '-t', 'rsa' );}) },                   1, 'systemx' );
+    is( scalar @{ found(q{IPC::System::Simple::runx( 'ssh-keygen', '-t', 'rsa' );}) }, 1, 'runx' );
+    is( scalar @{ found(q{my $o = capturex( [ 0, 1 ], 'ssh-keygen', '-l' );}) },       1, 'and capturex, past the exit values it allows' );
+};
+
+subtest 'more runners can be named, and are added to the defaults' => sub {
+    my $wrapper = q{run_local( 'ssh-keygen', '-t', 'rsa' );};
+
+    is( scalar @{ violations( $wrapper, $INI ) }, 0, 'a wrapper nobody named is not a runner' );
+    is( scalar @{ violations( $wrapper, $INI, 'run_local' ) }, 1, 'and one named in runners is' );
+
+    # The point of the list being additive: naming one's own runner must not
+    # quietly stop the policy reading the ones everybody uses.
+    is( scalar @{ violations( q{IPC::Run3::run3( [ 'ssh-keygen', '-t', 'rsa' ], \undef );}, $INI, 'run_local' ) }, 1, 'run3 is still read beside it' );
+
+    my $qualified = 'My::Util::run_local';
+    is( scalar @{ violations( q{My::Util::run_local( 'ssh-keygen', '-l' );}, $INI, $qualified ) }, 1, 'a runner named with its package is matched on its name' );
+    is( scalar @{ violations( q{$self->run_local( 'ssh-keygen', '-l' );},    $INI, $qualified ) }, 1, 'as a method too' );
 };
 
 subtest 'Capture::Tiny captures perl, not a command' => sub {

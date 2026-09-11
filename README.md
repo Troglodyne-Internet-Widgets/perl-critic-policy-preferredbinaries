@@ -46,13 +46,16 @@ as a method name -- `$obj->system(...)` -- and not as a hash key.
 - backticks and `qx//`.
 - a piped `open`, either `'-|'` or `'|-'`, in two- or
 three-argument form.
-- the usual runners, **by name**: `run3`, `run` and `capture`.  Called
-bare, fully qualified (`IPC::Run3::run3`, `IPC::Run::run`, `IPC::Cmd::run`,
-`IPC::System::Simple::capture`) or as a method.
+- runners, **by name**: `run3`, `run`, `capture`, `capturex`, `runx`
+and `systemx`, and any more named in ["runners"](#runners).  Called bare, fully
+qualified (`IPC::Run3::run3`, `IPC::Run::run`, `IPC::Cmd::run`,
+`IPC::System::Simple::capturex`) or as a method.
 The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
 take it, or a list -- or the value of a named `command =>`, as IPC::Cmd
-takes it, wherever it falls among the other named arguments.  A runner name
-used as a hash key is not a call and is not read as one.
+takes it, wherever it falls among the other named arguments.  An arrayref of
+numbers in front of the command, which is how IPC::System::Simple takes the exit
+values it allows, is passed over.  A runner name used as a hash key is not a
+call and is not read as one.
 
 [Capture::Tiny](https://metacpan.org/pod/Capture%3A%3ATiny) is not on that list.  What it captures is a block of perl, not
 a command, and any shell-out inside the block is one of the above and is
@@ -77,9 +80,9 @@ in-process module cannot stand in for a program running somewhere else.
 That is not something this policy should be concerned with, and the answer is
 in the method's name rather than in a `## no critic` at every call: name it
 for what it does and keep it off the list above -- `run_cmd`, `run_there`,
-anything that is not `run` or `capture`.  A local runner that happens to be
-called something else is equally invisible, which is the same rule seen from
-the other side: the name is the only thing this reads.
+anything that is not on it.  A local runner called something else is invisible
+until it is named in ["runners"](#runners), which is the same rule seen from the other
+side: the name is the only thing this reads.
 
 ## Matching a flag as well as a binary
 
@@ -99,7 +102,8 @@ In `.perlcriticrc`:
 
 ```
 [PreferredBinaries]
-config = ~/.preferred_binaries.ini
+config  = ~/.preferred_binaries.ini
+runners = run_local
 ```
 
 In `.preferred_binaries.ini`:
@@ -153,6 +157,21 @@ prefer = HTTP::Tiny
 names one ban and one recommendation, not two recommendations.  Config::INI
 carries nothing forward, so each section needs its own `prefer` if that is
 what it means.
+
+## runners
+
+More subs to read as runners, separated by whitespace -- a project's own
+wrapper around `system`, say.  Each is read the way the defaults are: by name,
+called bare, fully qualified or as a method, with the command as its first
+argument or its named `command =>`.
+
+These are **added to** the defaults -- `run3`, `run`, `capture`,
+`capturex`, `runx` and `systemx` -- and never replace them, so there is no
+way to take one of those off the list.
+
+A package in front of a name is dropped: `My::Util::run_local` is read as
+`run_local`, because that is all that is read of a call to it.  So it matches
+`Other::run_local` and `$obj->run_local` as well.
 
 # BUGS
 

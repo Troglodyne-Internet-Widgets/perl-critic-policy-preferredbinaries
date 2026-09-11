@@ -13,6 +13,10 @@ Revision history for Perl-Critic-Policy-PreferredBinaries
       tee_merged are no longer read as runners.  They capture a block of perl,
       not a command, and a shell-out inside the block is already reported as
       whatever it is.  capture stays, as IPC::System::Simple's.
+    - IPC::System::Simple's capturex, runx and systemx are read as runners.
+    - A runners parameter names more subs to read as runners -- a project's
+      own wrapper around system, say.  It adds to the defaults rather than
+      replacing them.
 
 0.001     2026-09-11 TEODESIAN
 

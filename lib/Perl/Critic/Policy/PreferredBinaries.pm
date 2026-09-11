@@ -66,13 +66,16 @@ as a method name -- C<< $obj->system(...) >> -- and not as a hash key.
 =item * a piped C<open>, either C<< '-|' >> or C<< '|-' >>, in two- or
 three-argument form.
 
-=item * the usual runners, B<by name>: C<run3>, C<run> and C<capture>.  Called
-bare, fully qualified (C<IPC::Run3::run3>, C<IPC::Run::run>, C<IPC::Cmd::run>,
-C<IPC::System::Simple::capture>) or as a method.
+=item * runners, B<by name>: C<run3>, C<run>, C<capture>, C<capturex>, C<runx>
+and C<systemx>, and any more named in L</runners>.  Called bare, fully
+qualified (C<IPC::Run3::run3>, C<IPC::Run::run>, C<IPC::Cmd::run>,
+C<IPC::System::Simple::capturex>) or as a method.
 The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
 take it, or a list -- or the value of a named C<< command => >>, as IPC::Cmd
-takes it, wherever it falls among the other named arguments.  A runner name
-used as a hash key is not a call and is not read as one.
+takes it, wherever it falls among the other named arguments.  An arrayref of
+numbers in front of the command, which is how IPC::System::Simple takes the exit
+values it allows, is passed over.  A runner name used as a hash key is not a
+call and is not read as one.
 
 =back
 
@@ -99,9 +102,9 @@ in-process module cannot stand in for a program running somewhere else.
 That is not something this policy should be concerned with, and the answer is
 in the method's name rather than in a C<## no critic> at every call: name it
 for what it does and keep it off the list above -- C<run_cmd>, C<run_there>,
-anything that is not C<run> or C<capture>.  A local runner that happens to be
-called something else is equally invisible, which is the same rule seen from
-the other side: the name is the only thing this reads.
+anything that is not on it.  A local runner called something else is invisible
+until it is named in L</runners>, which is the same rule seen from the other
+side: the name is the only thing this reads.
 
 =head2 Matching a flag as well as a binary
 
@@ -120,7 +123,8 @@ lists mean the same thing is a job for something that understands the binary.
 In F<.perlcriticrc>:
 
     [PreferredBinaries]
-    config = ~/.preferred_binaries.ini
+    config  = ~/.preferred_binaries.ini
+    runners = run_local
 
 In F<.preferred_binaries.ini>:
 
@@ -176,6 +180,21 @@ names one ban and one recommendation, not two recommendations.  Config::INI
 carries nothing forward, so each section needs its own C<prefer> if that is
 what it means.
 
+=head2 runners
+
+More subs to read as runners, separated by whitespace -- a project's own
+wrapper around C<system>, say.  Each is read the way the defaults are: by name,
+called bare, fully qualified or as a method, with the command as its first
+argument or its named C<< command => >>.
+
+These are B<added to> the defaults -- C<run3>, C<run>, C<capture>,
+C<capturex>, C<runx> and C<systemx> -- and never replace them, so there is no
+way to take one of those off the list.
+
+A package in front of a name is dropped: C<My::Util::run_local> is read as
+C<run_local>, because that is all that is read of a call to it.  So it matches
+C<Other::run_local> and C<< $obj->run_local >> as well.
+
 =cut
 
 =for Pod::Coverage supported_parameters
@@ -188,6 +207,18 @@ sub supported_parameters {
             name        => 'config',
             description => 'Config::INI file listing binaries and what to use instead.',
             behavior    => 'string',
+        },
+
+        # The library runners that hand a command to the system the way
+        # `system` does.  They are always read because a policy that caught only
+        # `system` would be a policy people route around by reaching for
+        # IPC::Run3, which is a step sideways rather than the step this is
+        # asking for.
+        {
+            name                       => 'runners',
+            description                => 'More subs to read as runners of a command.',
+            behavior                   => 'string list',
+            list_always_present_values => [qw{ run3 run capture capturex runx systemx }],
         },
     );
 }
@@ -203,18 +234,19 @@ use constant applies_to => qw{
 
 use constant DEFAULT_CONFIG => '.preferred_binaries.ini';
 
-# The builtins that hand a command to the system, and the library runners that
-# do the same thing with an argument list.  Both are here because a policy that
-# caught only `system` would be a policy people route around by reaching for
-# IPC::Run3, which is a step sideways rather than the step this is asking for.
+# The builtins that hand a command to the system.  The library runners that do
+# the same are the defaults of the runners parameter.
 my %BUILTIN  = map { $_ => 1 } qw{ system exec };
-my %RUNNER   = map { $_ => 1 } qw{ run3 run capture };
 my %PIPE_OPS = map { $_ => 1 } ( '-|', '|-' );
 
 sub initialize_if_enabled {
     my ( $self, $config ) = @_;
 
     $self->{_preferred} = $self->_parse_config( $self->_config_file($config) );
+
+    # A call is matched on the last part of its name, so a runner configured
+    # with its package has to be too, or it would never match anything.
+    $self->{_runners} = { map { ( split( q{::}, $_ ) )[-1] => 1 } keys %{ $self->{_runners} } };
 
     return $TRUE;
 }
@@ -325,9 +357,9 @@ sub _commands_in {
 
     my $word = "$elem";
 
-    return $self->_from_open($elem)      if $word eq 'open'                                 && is_function_call($elem);
-    return $self->_from_arguments($elem) if $BUILTIN{$word}                                 && is_function_call($elem);
-    return $self->_from_runner($elem)    if $RUNNER{ ( split( q{::}, $word ) )[-1] // q{} } && !is_hash_key($elem);
+    return $self->_from_open($elem)      if $word eq 'open'                                           && is_function_call($elem);
+    return $self->_from_arguments($elem) if $BUILTIN{$word}                                           && is_function_call($elem);
+    return $self->_from_runner($elem)    if $self->{_runners}{ ( split( q{::}, $word ) )[-1] // q{} } && !is_hash_key($elem);
 
     return ();
 }
