@@ -9,6 +9,10 @@ Revision history for Perl-Critic-Policy-PreferredBinaries
       longer read as a call.
     - IPC::Cmd::run's named command => argument is read, as the POD for 0.001
       claimed and the code did not.
+    - Capture::Tiny's capture_merged, capture_stdout, capture_stderr, tee and
+      tee_merged are no longer read as runners.  They capture a block of perl,
+      not a command, and a shell-out inside the block is already reported as
+      whatever it is.  capture stays, as IPC::System::Simple's.
 
 0.001     2026-09-11 TEODESIAN
 

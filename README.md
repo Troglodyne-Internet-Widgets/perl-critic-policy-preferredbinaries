@@ -46,14 +46,18 @@ as a method name -- `$obj->system(...)` -- and not as a hash key.
 - backticks and `qx//`.
 - a piped `open`, either `'-|'` or `'|-'`, in two- or
 three-argument form.
-- the usual runners, **by name**: `run3`, `run`, `capture`,
-`capture_merged`, `capture_stdout`, `capture_stderr`, `tee` and
-`tee_merged`.  Called bare, fully qualified (`IPC::Run3::run3`,
-`IPC::Run::run`, `IPC::Cmd::run`, `Capture::Tiny::capture`) or as a method.
+- the usual runners, **by name**: `run3`, `run` and `capture`.  Called
+bare, fully qualified (`IPC::Run3::run3`, `IPC::Run::run`, `IPC::Cmd::run`,
+`IPC::System::Simple::capture`) or as a method.
 The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
 take it, or a list -- or the value of a named `command =>`, as IPC::Cmd
 takes it, wherever it falls among the other named arguments.  A runner name
 used as a hash key is not a call and is not read as one.
+
+[Capture::Tiny](https://metacpan.org/pod/Capture%3A%3ATiny) is not on that list.  What it captures is a block of perl, not
+a command, and any shell-out inside the block is one of the above and is
+reported as that.  Its `capture` shares a name with IPC::System::Simple's,
+but a block holds no command this can read, so it has nothing to say about one.
 
 In each case it takes the first word of the command, drops any directory in
 front of it, and looks that up.  So `/usr/bin/ssh-keygen` and

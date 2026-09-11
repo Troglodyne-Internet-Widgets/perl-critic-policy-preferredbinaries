@@ -66,16 +66,20 @@ as a method name -- C<< $obj->system(...) >> -- and not as a hash key.
 =item * a piped C<open>, either C<< '-|' >> or C<< '|-' >>, in two- or
 three-argument form.
 
-=item * the usual runners, B<by name>: C<run3>, C<run>, C<capture>,
-C<capture_merged>, C<capture_stdout>, C<capture_stderr>, C<tee> and
-C<tee_merged>.  Called bare, fully qualified (C<IPC::Run3::run3>,
-C<IPC::Run::run>, C<IPC::Cmd::run>, C<Capture::Tiny::capture>) or as a method.
+=item * the usual runners, B<by name>: C<run3>, C<run> and C<capture>.  Called
+bare, fully qualified (C<IPC::Run3::run3>, C<IPC::Run::run>, C<IPC::Cmd::run>,
+C<IPC::System::Simple::capture>) or as a method.
 The command is the first argument -- an arrayref, as IPC::Run3 and IPC::Run
 take it, or a list -- or the value of a named C<< command => >>, as IPC::Cmd
 takes it, wherever it falls among the other named arguments.  A runner name
 used as a hash key is not a call and is not read as one.
 
 =back
+
+L<Capture::Tiny> is not on that list.  What it captures is a block of perl, not
+a command, and any shell-out inside the block is one of the above and is
+reported as that.  Its C<capture> shares a name with IPC::System::Simple's,
+but a block holds no command this can read, so it has nothing to say about one.
 
 In each case it takes the first word of the command, drops any directory in
 front of it, and looks that up.  So C<< /usr/bin/ssh-keygen >> and
@@ -204,7 +208,7 @@ use constant DEFAULT_CONFIG => '.preferred_binaries.ini';
 # caught only `system` would be a policy people route around by reaching for
 # IPC::Run3, which is a step sideways rather than the step this is asking for.
 my %BUILTIN  = map { $_ => 1 } qw{ system exec };
-my %RUNNER   = map { $_ => 1 } qw{ run3 run capture capture_merged capture_stdout capture_stderr tee tee_merged };
+my %RUNNER   = map { $_ => 1 } qw{ run3 run capture };
 my %PIPE_OPS = map { $_ => 1 } ( '-|', '|-' );
 
 sub initialize_if_enabled {
@@ -310,7 +314,7 @@ sub violates {
 }
 
 # The command lines this element hands to a shell, as arrayrefs of leading
-# literal words.  More than one, because `capture` and friends take a list.
+# literal words.  More than one, because IPC::Run takes a pipeline of arrayrefs.
 sub _commands_in {
     my ( $self, $elem ) = @_;
 

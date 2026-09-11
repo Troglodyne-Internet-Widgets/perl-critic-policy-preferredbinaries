@@ -84,20 +84,18 @@ sub found {
 
 subtest 'the ways a command reaches a shell' => sub {
     foreach my $case (
-        [ q{system( 'ssh-keygen', '-t', 'rsa' );},                      'system, as a list' ],
-        [ q{system('ssh-keygen -t rsa');},                              'system, as one string' ],
-        [ q{exec( 'ssh-keygen', '-t', 'rsa' );},                        'exec' ],
-        [ q{my $out = `ssh-keygen -l -f x`;},                           'backticks' ],
-        [ q{my $out = qx{ssh-keygen -l -f x};},                         'qx' ],
-        [ q{open( my $fh, '-|', 'ssh-keygen', '-l' );},                 'a three-argument piped open' ],
-        [ q{open( my $fh, 'ssh-keygen -l |' );},                        'and the two-argument form' ],
-        [ q{IPC::Run3::run3( [ 'ssh-keygen', '-t', 'rsa' ], \undef );}, 'run3, which takes an arrayref' ],
-        [ q{my $o = Capture::Tiny::capture_merged { 1 };},              'capture_merged with no command', 0 ],
+        [ q{system( 'ssh-keygen', '-t', 'rsa' );},                        'system, as a list' ],
+        [ q{system('ssh-keygen -t rsa');},                                'system, as one string' ],
+        [ q{exec( 'ssh-keygen', '-t', 'rsa' );},                          'exec' ],
+        [ q{my $out = `ssh-keygen -l -f x`;},                             'backticks' ],
+        [ q{my $out = qx{ssh-keygen -l -f x};},                           'qx' ],
+        [ q{open( my $fh, '-|', 'ssh-keygen', '-l' );},                   'a three-argument piped open' ],
+        [ q{open( my $fh, 'ssh-keygen -l |' );},                          'and the two-argument form' ],
+        [ q{IPC::Run3::run3( [ 'ssh-keygen', '-t', 'rsa' ], \undef );},   'run3, which takes an arrayref' ],
+        [ q{my $o = IPC::System::Simple::capture( 'ssh-keygen', '-l' );}, 'IPC::System::Simple::capture' ],
     ) {
-        my ( $source, $what, $expected ) = @$case;
-        $expected //= 1;
-
-        is( scalar @{ found($source) }, $expected, $what );
+        my ( $source, $what ) = @$case;
+        is( scalar @{ found($source) }, 1, $what );
     }
 
     # qw{} is how half the calls in the wild are written, and a policy that
@@ -140,6 +138,14 @@ subtest 'runners are matched by name, methods included, and not as hash keys' =>
     is( scalar @{ found(q{IPC::Cmd::run( command => [ 'ssh-keygen', '-t', 'rsa' ] );}) },     1, 'as an arrayref' );
     is( scalar @{ found(q{IPC::Cmd::run( verbose => 0, command => 'ssh-keygen -t rsa' );}) }, 1, 'and wherever it falls among the other named arguments' );
     is( scalar @{ found(q{IPC::Cmd::run( command => $cmd );}) },                              0, 'but not a command in a variable, which it cannot read' );
+};
+
+subtest 'Capture::Tiny captures perl, not a command' => sub {
+
+    # What runs inside the block is caught by what it is, and caught once.
+    is( scalar @{ found(q{my ( $o, $e ) = capture { system( 'ssh-keygen', '-t', 'rsa' ) };}) }, 1, 'system inside capture' );
+    is( scalar @{ found(q{my $o = Capture::Tiny::capture_merged { `ssh-keygen -l` };}) },       1, 'backticks inside capture_merged' );
+    is( scalar @{ found(q{my $o = capture { 1 };}) },                                           0, 'and a block that shells out to nothing is nothing' );
 };
 
 subtest 'the longest matching section wins' => sub {
