@@ -11,11 +11,16 @@ use warnings FATAL => 'all';
 
 use re '/aa';
 
+# Reading $h{a}{b} must not create $h{a}: the parsed configuration is looked up
+# with keys the code being criticised chose.
+no autovivification;
+
 use parent 'Perl::Critic::Policy';
 
 use Perl::Critic::Utils qw{ :severities :classification :ppi $SEVERITY_MEDIUM $TRUE $FALSE };
 
 use Perl::Critic::Exception::Configuration::Generic ();
+use Perl::Critic::Violation                         ();
 
 use Config::INI::Reader ();
 use File::Basename      ();
@@ -223,14 +228,18 @@ sub supported_parameters {
     );
 }
 
-use constant default_severity => $SEVERITY_MEDIUM;
-use constant default_themes   => qw{ maintenance certrec };
+# Subs rather than constants: Perl::Critic calls them by these names, so they
+# cannot be upper case.
+sub default_severity { return $SEVERITY_MEDIUM }
+sub default_themes   { return qw{ maintenance certrec } }
 
-use constant applies_to => qw{
-  PPI::Token::Word
-  PPI::Token::QuoteLike::Backtick
-  PPI::Token::QuoteLike::Command
-};
+sub applies_to {
+    return qw{
+      PPI::Token::Word
+      PPI::Token::QuoteLike::Backtick
+      PPI::Token::QuoteLike::Command
+    };
+}
 
 use constant DEFAULT_CONFIG => '.preferred_binaries.ini';
 
@@ -246,9 +255,16 @@ sub initialize_if_enabled {
 
     # A call is matched on the last part of its name, so a runner configured
     # with its package has to be too, or it would never match anything.
-    $self->{_runners} = { map { ( split( q{::}, $_ ) )[-1] => 1 } keys %{ $self->{_runners} } };
+    $self->{_runners} = { map { _last_part($_) => 1 } keys %{ $self->{_runners} } };
 
     return $TRUE;
+}
+
+# The part of a name after its last package separator.
+sub _last_part {
+    my ($name) = @_;
+
+    return $name =~ s{\A .* :: }{}sxr;
 }
 
 sub _config_file {
@@ -257,8 +273,8 @@ sub _config_file {
     $config //= $self->__get_config;
 
     my $file = $config->get('config');
-    $file = DEFAULT_CONFIG unless defined $file && length $file;
-    $file =~ s{^~}{$ENV{HOME} // q{}};
+    $file = DEFAULT_CONFIG if length( $file // q{} ) == 0;
+    $file =~ s{\A~}{ $ENV{HOME} // q{} }sxe;
 
     return $file;
 }
@@ -270,7 +286,7 @@ sub _config_file {
 sub _parse_config {
     my ( $self, $file ) = @_;
 
-    return {} unless length $file && -e $file;
+    return {} if length($file) == 0 || !-e $file;
 
     # Slurped rather than read_file, for compatibility with Test::MockFile.
     my $content;
@@ -278,7 +294,7 @@ sub _parse_config {
         local $/ = undef;
         open( my $fh, '<', $file ) or $self->_throw("Cannot open config file '$file': $!");
         $content = <$fh>;
-        close($fh);
+        close($fh) or $self->_throw("Cannot close config file '$file': $!");
     }
 
     my $parsed = eval { Config::INI::Reader->read_string($content) }
@@ -319,25 +335,23 @@ sub violates {
         my ( $key, $entry ) = $self->_match($command) or next;
 
         my $reason = $entry->{reason} // q{};
-        $reason = substr( $reason, 1, -1 ) if $reason =~ m/\A".*"\z/s;
+        $reason = substr( $reason, 1, -1 ) if $reason =~ m/\A ".*" \z/sx;
 
         my $what =
           defined $entry->{prefer}
           ? "Prefer $entry->{prefer} to shelling out to '$key'"
           : "Shelling out to '$key' is not recommended";
 
-        # A severity named on the entry rather than on the policy, which is how
-        # Perl::Critic::Policy::PreferredModules does the same thing: the
-        # violation takes the policy's severity as it is made, so the way to
-        # give it another is to have another in place while it is made.
-        local $self->{_severity} = $entry->{severity} if defined $entry->{severity};
-
+        # A severity named on the entry rather than on the policy.  The
+        # violation is made directly rather than through $self->violation,
+        # which takes the policy's severity and has no way to be given another.
         push(
             @violations,
-            $self->violation(
+            Perl::Critic::Violation->new(
                 $what,
-                ( length $reason ? $reason : "$key has an answer in perl; use it rather than a process" ),
+                ( length($reason) > 0 ? $reason : "$key has an answer in perl; use it rather than a process" ),
                 $elem,
+                $entry->{severity} // $self->get_severity,
             )
         );
     }
@@ -357,9 +371,9 @@ sub _commands_in {
 
     my $word = "$elem";
 
-    return $self->_from_open($elem)      if $word eq 'open'                                           && is_function_call($elem);
-    return $self->_from_arguments($elem) if $BUILTIN{$word}                                           && is_function_call($elem);
-    return $self->_from_runner($elem)    if $self->{_runners}{ ( split( q{::}, $word ) )[-1] // q{} } && !is_hash_key($elem);
+    return $self->_from_open($elem)      if $word eq 'open'                        && is_function_call($elem);
+    return $self->_from_arguments($elem) if $BUILTIN{$word}                        && is_function_call($elem);
+    return $self->_from_runner($elem)    if $self->{_runners}{ _last_part($word) } && !is_hash_key($elem);
 
     return ();
 }
@@ -369,18 +383,18 @@ sub _from_open {
     my ( $self, $elem ) = @_;
 
     my @args = parse_arg_list($elem);
-    return () unless @args >= 2;
+    return () if @args < 2;
 
     my $mode = _literal( _first_token( $args[1] ) );
     return () unless defined $mode;
 
     if ( $PIPE_OPS{$mode} ) {
-        return () unless @args >= 3;
+        return () if @args < 3;
         return ( _words_from_args( @args[ 2 .. $#args ] ) );
     }
 
     # Two-argument form: the mode is the command, with a pipe on one end.
-    return () unless $mode =~ s{\A\s*\|}{} || $mode =~ s{\|\s*\z}{};
+    return () unless $mode =~ s{\A\s*\|}{}sx || $mode =~ s{\|\s*\z}{}sx;
 
     return ( _words_from_string($mode) );
 }
@@ -458,7 +472,7 @@ sub _words_from_args {
     unshift( @commands, \@literal ) if @literal;
 
     # One bare string is a shell command line rather than a word.
-    if ( @literal == 1 && $literal[0] =~ m/\s/ ) {
+    if ( @literal == 1 && $literal[0] =~ m/\s/sx ) {
         $commands[0] = ( _words_from_string( $literal[0] ) )[0];
     }
 
@@ -531,7 +545,7 @@ sub _inside_quotelike {
     my ($elem) = @_;
 
     my $content = $elem->content;
-    $content =~ s/\Aqx//;
+    $content =~ s/\Aqx//sx;
 
     return q{} if length($content) < 2;
     return substr( $content, 1, -1 );
@@ -546,7 +560,7 @@ sub _words_from_string {
 
     my @words;
     foreach my $word ( split( ' ', $string ) ) {
-        last if $word =~ m/[\$\@\|<>;&`]/;
+        last if $word =~ m/[\$\@\|<>;&`]/sx;
         push( @words, $word );
     }
 
