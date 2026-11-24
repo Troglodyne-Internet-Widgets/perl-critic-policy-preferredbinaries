@@ -1,4 +1,4 @@
-#!/usr/bin/env perl
+#!perl
 
 use 5.014;
 
@@ -53,7 +53,7 @@ my $DIR = tempdir( CLEANUP => 1 );
 my $INI = "$DIR/preferred_binaries.ini";
 open( my $fh, '>', $INI ) or die $!;
 print {$fh} $CONFIG;
-close($fh);
+close($fh) or die $!;
 
 # One critic, configured with this policy alone and through a real profile:
 # everything below asserts on what this policy says, and reaching into it to set
@@ -80,7 +80,11 @@ sub violations {
 
 sub found {
     my ($source) = @_;
-    return [ map { $_->description } @{ violations($source) } ];
+    my @descriptions;
+    foreach my $violation ( @{ violations($source) } ) {
+        push( @descriptions, $violation->description );
+    }
+    return \@descriptions;
 }
 
 subtest 'the ways a command reaches a shell' => sub {
@@ -175,15 +179,15 @@ subtest 'the longest matching section wins' => sub {
     # Which is the whole point of allowing arguments in a section name: one
     # binary, two jobs, two answers.
     my $general = found(q{system( 'ssh-keygen', '-t', 'rsa', '-f', $path );});
-    like( $general->[0], qr/write_ssh_keypair/, 'the bare binary gets the general answer' );
+    like( $general->[0], qr/write_ssh_keypair/sx, 'the bare binary gets the general answer' );
 
     my $specific = found(q{system( 'ssh-keygen', '-y', '-f', $path );});
-    like( $specific->[0], qr/ssh_pubkey_from_private/, 'and the one with the flag gets its own' );
+    like( $specific->[0], qr/ssh_pubkey_from_private/sx, 'and the one with the flag gets its own' );
 
     # Only leading words, and only literally: whether `-q -y` means the same as
     # `-y` is a question about ssh-keygen rather than about perl.
     my $reordered = found(q{system( 'ssh-keygen', '-q', '-y', '-f', $path );});
-    like( $reordered->[0], qr/write_ssh_keypair/, 'a flag that is not leading falls back to the general one' );
+    like( $reordered->[0], qr/write_ssh_keypair/sx, 'a flag that is not leading falls back to the general one' );
 };
 
 subtest 'a section with no prefer is a ban rather than a recommendation' => sub {
@@ -194,14 +198,14 @@ subtest 'a section with no prefer is a ban rather than a recommendation' => sub 
     # carrying `prefer` reports "Using module JSON is not recommended" for the
     # first and the full recommendation only for the second.  Config::INI
     # carries nothing forward.
-    like( found(q{system( 'curl', '-s', $url );})->[0], qr/\QPrefer HTTP::Tiny\E/,                         'a section with prefer recommends' );
-    like( found(q{system( 'wget', '-q', $url );})->[0], qr/\QShelling out to 'wget' is not recommended\E/, 'and one without it bans' );
+    is( found(q{system( 'curl', '-s', $url );})->[0], "Prefer HTTP::Tiny to shelling out to 'curl'", 'a section with prefer recommends' );
+    is( found(q{system( 'wget', '-q', $url );})->[0], "Shelling out to 'wget' is not recommended",   'and one without it bans' );
 };
 
 subtest 'what it says, and how loudly' => sub {
     my ($violation) = @{ violations(q{system( 'ssh-keygen', '-t', 'rsa' );}) };
 
-    like( $violation->description, qr/\QPrefer Provisioner::Utils::write_ssh_keypair to shelling out to 'ssh-keygen'\E/, 'names both halves' );
+    is( $violation->description, "Prefer Provisioner::Utils::write_ssh_keypair to shelling out to 'ssh-keygen'", 'names both halves' );
 
     # The reason is what turns a rule into advice.  Quotes come off, because
     # Config::INI keeps them and nobody wants them in the output.
@@ -220,11 +224,18 @@ subtest 'no configuration is no opinion' => sub {
     is( scalar @$missing, 0, 'a config that is not there reports nothing rather than failing' );
 };
 
+subtest 'a ~ in the path of the configuration is the home directory' => sub {
+    local $ENV{HOME} = $DIR;
+    my $found = violations( q{system( 'ssh-keygen', '-t', 'rsa' );}, '~/preferred_binaries.ini' );
+
+    is( scalar @{$found}, 1, 'the file is found under HOME' );
+};
+
 subtest 'a binary nothing was said about is still nothing to say' => sub {
     my $file = "$DIR/partial.ini";
     open( my $out, '>', $file ) or die $!;
     print {$out} "[curl]\nprefer = HTTP::Tiny\n";
-    close($out);
+    close($out) or die $!;
 
     is( scalar @{ violations( q{system( 'wget', '-q', $url );}, $file ) }, 0, 'no section, no violation' );
 };
